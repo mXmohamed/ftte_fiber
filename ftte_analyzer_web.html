@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analyseur FTTE - Version Web avec Python</title>
+    <title>Identification des positions FTTE par PM</title>
     <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
     <style>
         body {
@@ -22,13 +22,7 @@
         h1 {
             color: #333;
             text-align: center;
-            margin-bottom: 10px;
-        }
-        .subtitle {
-            text-align: center;
-            color: #666;
             margin-bottom: 30px;
-            font-size: 14px;
         }
         .upload-area {
             border: 2px dashed #ccc;
@@ -67,6 +61,21 @@
             background-color: #ccc;
             cursor: not-allowed;
         }
+        #analyzeButton {
+            display: none;
+            margin: 20px auto;
+            background-color: #2196F3;
+            color: white;
+            padding: 15px 40px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        #analyzeButton:hover {
+            background-color: #1976D2;
+        }
         #status {
             margin-top: 20px;
             padding: 10px;
@@ -104,19 +113,51 @@
             overflow-y: auto;
             display: none;
         }
-        #downloadButton {
+        .results-container {
             display: none;
-            margin-top: 20px;
-            background-color: #007bff;
+            margin-top: 30px;
+        }
+        .download-section {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        #downloadButton {
+            background-color: #4CAF50;
             color: white;
-            padding: 10px 20px;
+            padding: 12px 30px;
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 16px;
+            font-weight: bold;
         }
         #downloadButton:hover {
-            background-color: #0056b3;
+            background-color: #45a049;
+        }
+        .stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stats-table th {
+            background-color: #2196F3;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: bold;
+        }
+        .stats-table td {
+            padding: 15px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .stats-table tr:nth-child(even) {
+            background-color: #f5f5f5;
+        }
+        .stats-table .value {
+            text-align: right;
+            font-weight: bold;
+            color: #2196F3;
         }
         .loading-spinner {
             display: none;
@@ -141,8 +182,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🔍 Analyseur FTTE - Recherche via Nœud PE</h1>
-        <p class="subtitle">Version Web avec Python intégré (Pyodide)</p>
+        <h1>🔍 Identification des positions FTTE par PM</h1>
         
         <div class="upload-area" id="uploadArea">
             <p>📁 Glissez-déposez votre fichier ZIP ici</p>
@@ -152,15 +192,49 @@
             <div class="file-info" id="fileInfo"></div>
         </div>
 
+        <button id="analyzeButton" style="display: none;">ANALYSER</button>
+
         <div id="status"></div>
         <div class="loading-spinner" id="loadingSpinner"></div>
         <div id="output"></div>
-        <button id="downloadButton">📥 Télécharger les résultats CSV</button>
+
+        <div class="results-container" id="resultsContainer">
+            <div class="download-section">
+                <button id="downloadButton">📥 Télécharger les résultats CSV</button>
+            </div>
+            
+            <table class="stats-table">
+                <tr>
+                    <th colspan="2">📊 Résumé de l'analyse</th>
+                </tr>
+                <tr>
+                    <td>Nombre de cassettes FTTE</td>
+                    <td class="value" id="statCassettes">-</td>
+                </tr>
+                <tr>
+                    <td>Nombre de câbles Transport (TR)</td>
+                    <td class="value" id="statCablesTR">-</td>
+                </tr>
+                <tr>
+                    <td>Nombre de câbles Distribution (DI)</td>
+                    <td class="value" id="statCablesDI">-</td>
+                </tr>
+                <tr>
+                    <td>Nombre de SRO</td>
+                    <td class="value" id="statSRO">-</td>
+                </tr>
+                <tr>
+                    <td>Nombre de positions FTTE identifiées</td>
+                    <td class="value" id="statPositions">-</td>
+                </tr>
+            </table>
+        </div>
     </div>
 
     <script>
         let pyodide = null;
         let outputContent = '';
+        let fileToAnalyze = null;
         
         // Charger Pyodide au chargement de la page
         async function loadPyodideAndPackages() {
@@ -182,6 +256,7 @@
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
         const uploadLabel = document.getElementById('uploadLabel');
+        const analyzeButton = document.getElementById('analyzeButton');
 
         uploadArea.addEventListener('dragover', (e) => {
             e.preventDefault();
@@ -197,13 +272,19 @@
             uploadArea.classList.remove('dragover');
             const files = e.dataTransfer.files;
             if (files.length > 0) {
-                handleFile(files[0]);
+                prepareFile(files[0]);
             }
         });
 
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
-                handleFile(e.target.files[0]);
+                prepareFile(e.target.files[0]);
+            }
+        });
+
+        analyzeButton.addEventListener('click', () => {
+            if (fileToAnalyze) {
+                handleFile(fileToAnalyze);
             }
         });
 
@@ -225,21 +306,30 @@
             outputContent = text;
         }
 
-        async function handleFile(file) {
+        function prepareFile(file) {
             if (!file.name.endsWith('.zip')) {
                 showStatus('Veuillez sélectionner un fichier ZIP', 'error');
                 return;
             }
 
+            fileToAnalyze = file;
+            document.getElementById('fileInfo').textContent = `Fichier: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+            analyzeButton.style.display = 'block';
+            hideStatus();
+            document.getElementById('output').style.display = 'none';
+            document.getElementById('resultsContainer').style.display = 'none';
+        }
+
+        async function handleFile(file) {
             if (!pyodide) {
                 showStatus('Python est encore en cours de chargement, veuillez patienter...', 'loading');
                 return;
             }
 
-            document.getElementById('fileInfo').textContent = `Fichier: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
             uploadLabel.disabled = true;
+            analyzeButton.style.display = 'none';
             document.getElementById('loadingSpinner').style.display = 'block';
-            showStatus('Traitement en cours...', 'loading');
+            showStatus('Démarrage de l\'analyse...', 'loading');
             showOutput('Démarrage de l\'analyse...\n');
 
             try {
@@ -250,7 +340,7 @@
                 // Passer le fichier à Pyodide
                 pyodide.FS.writeFile('input.zip', uint8Array);
 
-                // Code Python modifié pour le web
+                // Code Python modifié pour le web avec statistiques
                 const pythonCode = `
 import zipfile
 import csv
@@ -262,6 +352,15 @@ import sys
 # Rediriger stdout pour capturer la sortie
 output_buffer = io.StringIO()
 sys.stdout = output_buffer
+
+# Variables pour les statistiques
+stats = {
+    'cassettes_ftte': 0,
+    'cables_tr': 0,
+    'cables_di': 0,
+    'sro': 0,
+    'positions_ftte': 0
+}
 
 def process_ftte_analysis():
     print("Démarrage de l'analyse du fichier...")
@@ -311,11 +410,15 @@ def process_ftte_analysis():
                 
                 print(f"   → {row_count} lignes traitées")
             
+            stats['cassettes_ftte'] = len(cassettes_ftte)
             print(f"   → {len(cassettes_ftte)} cassettes FTTE trouvées")
             
             # 2. Charger les câbles
             print("\\n🔌 Chargement des câbles...")
             cables = {}
+            cables_tr_count = 0
+            cables_di_count = 0
+            
             with zip_file.open('t_cable.csv') as f:
                 content = f.read()
                 for encoding in ['utf-8', 'latin-1', 'cp1252']:
@@ -335,8 +438,15 @@ def process_ftte_analysis():
                                 for k, v in row.items() if k}
                     
                     cb_code = clean_row.get('cb_code')
+                    cb_typelog = clean_row.get('cb_typelog')
                     cb_nd1 = clean_row.get('cb_nd1', '')
                     cb_nd2 = clean_row.get('cb_nd2', '')
+                    
+                    # Compter les types de câbles
+                    if cb_typelog == 'TR':
+                        cables_tr_count += 1
+                    elif cb_typelog == 'DI':
+                        cables_di_count += 1
                     
                     pe_node = None
                     if cb_nd1.startswith('PE'):
@@ -347,14 +457,17 @@ def process_ftte_analysis():
                         pe_count += 1
                     
                     cables[cb_code] = {
-                        'cb_typelog': clean_row.get('cb_typelog'),
+                        'cb_typelog': cb_typelog,
                         'cb_etiquet': clean_row.get('cb_etiquet', cb_code),
                         'cb_nd1': cb_nd1,
                         'cb_nd2': cb_nd2,
                         'pe_node': pe_node
                     }
-                    
+            
+            stats['cables_tr'] = cables_tr_count
+            stats['cables_di'] = cables_di_count
             print(f"   → {len(cables)} câbles chargés")
+            print(f"   → {cables_tr_count} câbles TR, {cables_di_count} câbles DI")
             print(f"   → {pe_count} câbles avec nœud PE identifié")
             
             # 3. Créer un index des fibres
@@ -416,6 +529,8 @@ def process_ftte_analysis():
             # 5. Charger les locaux SRO
             print("\\n🏢 Chargement des locaux SRO...")
             site_to_local = {}
+            sro_count = 0
+            
             with zip_file.open('t_local.csv') as f:
                 content = f.read()
                 for encoding in ['utf-8', 'latin-1', 'cp1252']:
@@ -433,6 +548,7 @@ def process_ftte_analysis():
                     clean_row = {k.strip().replace('\\ufeff', ''): v.strip() if v else '' 
                                 for k, v in row.items() if k}
                     if clean_row.get('lc_typelog') == 'SRO':
+                        sro_count += 1
                         st_code = clean_row.get('lc_st_code')
                         if st_code:
                             site_to_local[st_code] = {
@@ -440,7 +556,8 @@ def process_ftte_analysis():
                                 'lc_etiquet': clean_row.get('lc_etiquet')
                             }
             
-            print(f"   → {len(site_to_local)} locaux SRO chargés")
+            stats['sro'] = sro_count
+            print(f"   → {len(site_to_local)} locaux SRO chargés (total SRO: {sro_count})")
             
             # 6. Traiter les positions
             print("\\n⚙️ Traitement des positions...")
@@ -524,6 +641,8 @@ def process_ftte_analysis():
                     if positions_processed % 100000 == 0:
                         print(f"   → {positions_processed:,} positions traitées, {len(results):,} résultats trouvés...")
             
+            stats['positions_ftte'] = len(results)
+            
             elapsed_time = time.time() - start_time
             print(f"\\n✅ Analyse terminée en {elapsed_time:.2f} secondes")
             print(f"\\n📊 Résultats:")
@@ -559,21 +678,30 @@ if results:
         writer.writerow(row)
     csv_content = output.getvalue()
 
-# Retourner la sortie et le CSV
-(output_buffer.getvalue(), csv_content)
+# Retourner la sortie, le CSV et les statistiques
+(output_buffer.getvalue(), csv_content, stats)
 `;
 
                 // Exécuter le code Python
-                const [output, csvContent] = await pyodide.runPythonAsync(pythonCode);
+                const [output, csvContent, statistics] = await pyodide.runPythonAsync(pythonCode);
                 
                 showOutput(output);
                 
                 if (csvContent) {
                     showStatus('Analyse terminée avec succès !', 'success');
                     
-                    // Activer le bouton de téléchargement
+                    // Mettre à jour les statistiques
+                    document.getElementById('statCassettes').textContent = statistics.cassettes_ftte.toLocaleString('fr-FR');
+                    document.getElementById('statCablesTR').textContent = statistics.cables_tr.toLocaleString('fr-FR');
+                    document.getElementById('statCablesDI').textContent = statistics.cables_di.toLocaleString('fr-FR');
+                    document.getElementById('statSRO').textContent = statistics.sro.toLocaleString('fr-FR');
+                    document.getElementById('statPositions').textContent = statistics.positions_ftte.toLocaleString('fr-FR');
+                    
+                    // Afficher les résultats
+                    document.getElementById('resultsContainer').style.display = 'block';
+                    
+                    // Configurer le téléchargement
                     const downloadButton = document.getElementById('downloadButton');
-                    downloadButton.style.display = 'block';
                     downloadButton.onclick = () => {
                         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                         const link = document.createElement('a');
