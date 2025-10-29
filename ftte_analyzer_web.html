@@ -302,7 +302,7 @@
         function showOutput(text) {
             const output = document.getElementById('output');
             output.textContent = text;
-            output.style.display = 'block';
+            output.style.display = 'none';  // Cacher les logs
             outputContent = text;
         }
 
@@ -329,8 +329,7 @@
             uploadLabel.disabled = true;
             analyzeButton.style.display = 'none';
             document.getElementById('loadingSpinner').style.display = 'block';
-            showStatus('Démarrage de l\'analyse...', 'loading');
-            showOutput('Démarrage de l\'analyse...\n');
+            showStatus('Analyse en cours...', 'loading');
 
             try {
                 // Lire le fichier comme ArrayBuffer
@@ -678,8 +677,14 @@ if results:
         writer.writerow(row)
     csv_content = output.getvalue()
 
-# Retourner la sortie, le CSV et les statistiques
-(output_buffer.getvalue(), csv_content, stats)
+# Retourner la sortie, le CSV et les statistiques sous forme de liste
+(output_buffer.getvalue(), csv_content, [
+    stats['cassettes_ftte'],
+    stats['cables_tr'],
+    stats['cables_di'],
+    stats['sro'],
+    stats['positions_ftte']
+])
 `;
 
                 // Exécuter le code Python
@@ -690,12 +695,12 @@ if results:
                 if (csvContent) {
                     showStatus('Analyse terminée avec succès !', 'success');
                     
-                    // Mettre à jour les statistiques
-                    document.getElementById('statCassettes').textContent = Number(statistics.cassettes_ftte).toLocaleString('fr-FR');
-                    document.getElementById('statCablesTR').textContent = Number(statistics.cables_tr).toLocaleString('fr-FR');
-                    document.getElementById('statCablesDI').textContent = Number(statistics.cables_di).toLocaleString('fr-FR');
-                    document.getElementById('statSRO').textContent = Number(statistics.sro).toLocaleString('fr-FR');
-                    document.getElementById('statPositions').textContent = Number(statistics.positions_ftte).toLocaleString('fr-FR');
+                    // Mettre à jour les statistiques depuis le tableau
+                    document.getElementById('statCassettes').textContent = Number(statistics[0]).toLocaleString('fr-FR');
+                    document.getElementById('statCablesTR').textContent = Number(statistics[1]).toLocaleString('fr-FR');
+                    document.getElementById('statCablesDI').textContent = Number(statistics[2]).toLocaleString('fr-FR');
+                    document.getElementById('statSRO').textContent = Number(statistics[3]).toLocaleString('fr-FR');
+                    document.getElementById('statPositions').textContent = Number(statistics[4]).toLocaleString('fr-FR');
                     
                     // Afficher les résultats
                     document.getElementById('resultsContainer').style.display = 'block';
