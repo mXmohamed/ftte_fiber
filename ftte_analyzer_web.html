@@ -691,11 +691,11 @@ if results:
                     showStatus('Analyse terminée avec succès !', 'success');
                     
                     // Mettre à jour les statistiques
-                    document.getElementById('statCassettes').textContent = statistics.cassettes_ftte.toLocaleString('fr-FR');
-                    document.getElementById('statCablesTR').textContent = statistics.cables_tr.toLocaleString('fr-FR');
-                    document.getElementById('statCablesDI').textContent = statistics.cables_di.toLocaleString('fr-FR');
-                    document.getElementById('statSRO').textContent = statistics.sro.toLocaleString('fr-FR');
-                    document.getElementById('statPositions').textContent = statistics.positions_ftte.toLocaleString('fr-FR');
+                    document.getElementById('statCassettes').textContent = Number(statistics.cassettes_ftte).toLocaleString('fr-FR');
+                    document.getElementById('statCablesTR').textContent = Number(statistics.cables_tr).toLocaleString('fr-FR');
+                    document.getElementById('statCablesDI').textContent = Number(statistics.cables_di).toLocaleString('fr-FR');
+                    document.getElementById('statSRO').textContent = Number(statistics.sro).toLocaleString('fr-FR');
+                    document.getElementById('statPositions').textContent = Number(statistics.positions_ftte).toLocaleString('fr-FR');
                     
                     // Afficher les résultats
                     document.getElementById('resultsContainer').style.display = 'block';
